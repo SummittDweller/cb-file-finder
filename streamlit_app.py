@@ -99,7 +99,7 @@ def st_file_selector(st_placeholder, path, label='Select a file/folder', key='di
 
 # upload_to_azure( ) - Just what the name says post-processing
 # ----------------------------------------------------------------------------------------------
-def upload_to_azure(blob_service_client, url, match, local_storage_path, transcript):
+def upload_to_azure(blob_service_client, url, match, local_storage_path, transcript=False):
 
     try:
 
@@ -353,7 +353,7 @@ def fuzzy_search_for_files(status):
         csv_line = [None] * 7
         significant_text = ''
 
-        csv_line[0] = counter
+        csv_line[0] = x             # was counter, but that does not account for skipped filenames!
         csv_line[1] = target
         csv_line[2] = None            # Hold our regex expression...later
 
@@ -691,10 +691,7 @@ def build_azure_url(target, score, match, mode='OBJ'):
 # ----------------------------------------------------------------------------
 def post_processing(csv_results):
 
-    with st.status(
-            f"Beginning post-processing for {len(csv_results)} objects.",
-            expanded=True,
-            state="running") as status:
+    with st.status(f"Beginning post-processing for {len(csv_results)} objects.", expanded=True, state="running") as status:
 
         st.session_state['copied'] = 0
         st.session_state['exists'] = 0
@@ -743,9 +740,7 @@ def post_processing(csv_results):
                     file_handler(index, blob_service_client, target, score, match, local_storage_path, transcript)
 
             # Done!
-            status.update(label=f"Azure post processing is complete!",
-                          expanded=True,
-                          state="complete")
+            status.update(label=f"Azure post processing is complete!", expanded=True, state="complete")
 
         except Exception as ex:
             state('logger').critical(ex)
@@ -758,14 +753,18 @@ def post_processing(csv_results):
 
 
     # If we have an open dataframe, write it back into the Google sheet
-    if isinstance(st.session_state['df'], pd.DataFrame):
+    if isinstance(st.session_state.df, pd.DataFrame):
+
+        # If the "Dump dataframe before save" is set, print the dataframe
+        if st.session_state.dump_dataframe:
+            st.dataframe(st.session_state.df)
 
         try:
 
             worksheet = open_google_worksheet(
                 state('google_sheet_url'), state('google_worksheet_selection'))
             if worksheet:
-                set_with_dataframe(worksheet, st.session_state['df'], 1, 1)
+                set_with_dataframe(worksheet, st.session_state.df, 1, 1)
                 txt = f"Updated file URLs have been saved to the selected Google worksheet."
                 st.success(txt)
                 state('logger').success(txt)
@@ -781,7 +780,7 @@ def post_processing(csv_results):
             state('logger').error(txt)
 
             st.write(f"Dumping the updated worksheet DataFrame...")
-            st.dataframe(st.session_state['df'])
+            st.dataframe(st.session_state.df)
             state('logger').critical(ex)
             st.exception(ex)
 
@@ -795,6 +794,8 @@ def post_processing(csv_results):
 # ---------------------------------------------------------------------------------------
 def file_handler(index, blob_service_client, target, score, match, local_storage_path, transcript=False):
     
+    url = None
+
     # Build an Azure Blob URL for the object
     if transcript:
         url = build_azure_url(target, score, transcript, mode="TRANSCRIPT")
@@ -832,18 +833,13 @@ def file_handler(index, blob_service_client, target, score, match, local_storage
             state('logger').error(txt)
             return False
 
-    # Temporary... print the dataframe
-    # if isinstance(st.session_state['df'], pd.DataFrame):
-    #     st.dataframe(st.session_state['df'])
-
-    if col and isinstance(st.session_state['df'], pd.DataFrame):
-        df = st.session_state['df']
-        row = df.index[index - 1]  # adjust for header row!
-        df.at[row, col] = url
+    if col and isinstance(st.session_state.df, pd.DataFrame):
+        row = st.session_state.df.index[index - 1]  # adjust for header row!
+        st.session_state.df.at[row, col] = url
 
         # And if this is a transcript, set the 'display_template' value to 'transcript'
         if transcript:
-            df.at[row, 'display_template'] = 'transcript'
+            st.session_state.df.at[row, 'display_template'] = 'transcript'
 
         # Temporary... print the dataframe
         # if isinstance(st.session_state['df'], pd.DataFrame):
@@ -851,15 +847,11 @@ def file_handler(index, blob_service_client, target, score, match, local_storage
 
     # Thumbnail creation
     if url and state('generate_thumb') and not state('copy_to_objs'):
-        result = create_derivative('thumbnail', index, url,
-                                   local_storage_path,
-                                   blob_service_client)
+        result = create_derivative('thumbnail', index, url, local_storage_path, blob_service_client)
 
     # "Small" creation
     if url and state('generate_small'):
-        result = create_derivative('small', index, url,
-                                   local_storage_path,
-                                   blob_service_client)
+        result = create_derivative('small', index, url, local_storage_path, blob_service_client)
 
     return True
 
@@ -902,6 +894,8 @@ def file_handler(index, blob_service_client, target, score, match, local_storage
 # ------------------------------------------------------------
 def create_derivative(derivative_type, index, url, local_storage_path, blob_service_client):
 
+    derivative_filename = None
+
     dirname, basename = os.path.split(local_storage_path)
     root, ext = os.path.splitext(basename)
 
@@ -925,7 +919,6 @@ def create_derivative(derivative_type, index, url, local_storage_path, blob_serv
 
     # If creating derivative(s) for CollectionBuilder...
     if state('processing_mode') == 'CollectionBuilder':
-        derivative_path = f"/tmp/{derivative_filename}"
         
         if derivative_type == 'thumbnail':
             col = 'image_thumb'
@@ -963,6 +956,8 @@ def create_derivative(derivative_type, index, url, local_storage_path, blob_serv
             txt = f"Call to create_derivative( ) has an unknown 'derivative_type' of '{derivative_type}'."
             st.error(txt)
             state('logger').error(txt)
+
+        derivative_path = f"/tmp/{derivative_filename}"
 
         # If original is an image...
         if ext.lower( ) in ['.tiff', '.tif', '.jpg', '.jpeg', '.png']:
@@ -1034,6 +1029,8 @@ if __name__ == '__main__':
         st.session_state.transfer_transcripts = False
     if not state('copy_to_objs'):
         st.session_state.copy_to_objs = False
+    if not state('dump_dataframe'):
+        st.session_state.dump_dataframe = False
     if not state('df'):
         st.session_state.df = pd.DataFrame( )  # Empty Pandas dataframe for our Google Sheet
 
@@ -1060,20 +1057,20 @@ if __name__ == '__main__':
             key='use_previous_file_list_checkbox')
         st.session_state.use_previous_file_list = use_previous_file_list
 
-        # Check worksheet column headings
-        if state('use_previous_file_list'):
-            st.session_state.check_worksheet_column_headings = False
-            check_worksheet_column_headings = st.checkbox(
-                label="Check worksheet for proper column headings",
-                value=False,
-                disabled=True,   
-                key='check_worksheet_column_headings_checkbox')
-        else:
-            st.session_state.check_worksheet_column_headings = st.checkbox(
-                label="Check worksheet for proper column headings",
-                value=state('check_worksheet_column_headings'),
-                disabled=False,
-                key='check_worksheet_column_headings_checkbox')
+        # # Check worksheet column headings
+        # if state('use_previous_file_list'):
+        #     st.session_state.check_worksheet_column_headings = False
+        #     check_worksheet_column_headings = st.checkbox(
+        #         label="Check worksheet for proper column headings",
+        #         value=False,
+        #         disabled=True,   
+        #         key='check_worksheet_column_headings_checkbox')
+        # else:
+        # st.session_state.check_worksheet_column_headings = st.checkbox(
+        #     label="Check worksheet for proper column headings",
+        #     value=state('check_worksheet_column_headings'),
+        #     disabled=False,
+        #     key='check_worksheet_column_headings_checkbox')
 
         # Output to CSV?
         output_to_csv = st.checkbox(
@@ -1088,7 +1085,7 @@ if __name__ == '__main__':
 
         # Copy files to Azure blob storage?
         azure_blob_storage = st.checkbox(
-            "Check here to copy found files to Azure Blob Storage",
+            "Check here to copy EXACT found files and derivatives to Azure Blob Storage",
             value=False,
             key='azure_blob_storage_checkbox')
         st.session_state.azure_blob_storage = azure_blob_storage
@@ -1111,13 +1108,21 @@ if __name__ == '__main__':
             st.session_state.transfer_transcripts = False
 
         # Generate thumbnail and/or small image derivatives?
-        generate_thumb = st.checkbox(
-            "Check here to automatically generate and save thumbnail (TN or clientThumb) images",
-            value=False,
-            key='generate_thumb_checkbox',
-            disabled=False)
-        st.session_state.generate_thumb = generate_thumb
-
+        if state('azure_blob_storage'):
+            generate_thumb = st.checkbox(
+                "Check here to automatically generate and save thumbnail (TN) images",
+                value=False,
+                key='generate_thumb_checkbox',
+                disabled=False)
+            st.session_state.generate_thumb = generate_thumb
+        
+        else: 
+            generate_thumb = st.checkbox(
+                "Check here to automatically generate and save thumbnail (TN) images",
+                value=False,
+                key='generate_thumb_checkbox',
+                disabled=True)
+            st.session_state.generate_thumb = False
 
         if state('azure_blob_storage'):
             generate_small = st.checkbox(
@@ -1127,7 +1132,7 @@ if __name__ == '__main__':
                 disabled=False)
             st.session_state.generate_small = generate_small
 
-        else:
+        else: 
             generate_small = st.checkbox(
                 "Check here to automatically generate and save small (JPG) images",
                 value=False,
@@ -1151,6 +1156,13 @@ if __name__ == '__main__':
         #         key='copy_to_objs_checkbox',
         #         disabled=False)
         #     st.session_state.copy_to_objs = copy_to_objs
+
+        # Dump dataframe before save?
+        dump_dataframe = st.checkbox(
+            "Dump the Google Sheet dataframe before it is saved?",
+            value=False,
+            key='dump_dataframe_checkbox')
+        st.session_state.dump_dataframe = dump_dataframe
 
     # Fetch the --worksheet argument
     if not state('use_previous_file_list'):
