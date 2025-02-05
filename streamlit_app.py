@@ -14,7 +14,8 @@
 ## OBJ files it finds into Azure Blob Storage.  If --extended (-x) is also specified, the script will also
 ## search for and copy all _TN. and _JPG. files (substituting those for _OBJ.) that it finds.
 ## The copy-to-azure operation will also generate a .csv file containing Azure Blob URL(s) suitable
-## for input into the `object_location`, `image_small`, and `image_thumb` columns of a CollectionBuilder CSV ## file or Google Sheet.
+## for input into the `object_location`, `image_small`, and `image_thumb` columns of a CollectionBuilder CSV 
+## file or Google Sheet.
 ## -----------------------------------------------------------------------------------------------------
 
 import os
@@ -82,10 +83,7 @@ def st_file_selector(st_placeholder, path, label='Select a file/folder', key='di
     else:
         base_path = st.session_state[key+'curr_dir']
 
-    selected_file = st_placeholder.selectbox(label=label,
-                                        options=st.session_state[key+'files'],
-                                        key=key,
-                                        on_change = lambda: update_dir(key))
+    selected_file = st_placeholder.selectbox(label=label, options=st.session_state[key+'files'], key=key, on_change = lambda: update_dir(key))
 
     selected_path = os.path.normpath(os.path.join(base_path, selected_file))
     st_placeholder.write(os.path.abspath(selected_path))
@@ -331,7 +329,7 @@ def fuzzy_search_for_files(status):
 
         if len(filenames[x]) < 1:  # filename is empty, skip this row 
             txt = f"Skipping match for BLANK filename in worksheet row {x}"
-            st.warning(txt)
+            # st.warning(txt)
             state('logger').warning(txt)
             continue  # move on and process the next row
 
@@ -353,17 +351,11 @@ def fuzzy_search_for_files(status):
         csv_line = [None] * 7
         significant_text = ''
 
-        csv_line[0] = x             # was counter, but that does not account for skipped filenames!
+        csv_line[0] = x             # was 'counter', but that does not account for skipped filenames!
         csv_line[1] = target
         csv_line[2] = None            # Hold our regex expression...later
 
-        (significant_text, significant_file_list, significant_path_list,
-         significant_dict) = build_lists_and_dict(significant, target,
-                                                  big_file_list, big_path_list)
-
-        # if significant_text:
-        #      st.status(f"  Significant string is: '{significant_text}'.")
-        #      report = significant_text
+        (significant_text, significant_file_list, significant_path_list, significant_dict) = build_lists_and_dict(significant, target, big_file_list, big_path_list)
 
         # If target is blank, skip the search and set matches = False
         matches = False
@@ -439,9 +431,7 @@ def fuzzy_search_for_files(status):
     st.success(txt)
     state('logger').success(txt)
 
-    status.update(label=f"Fuzzy search is **complete**!",
-                  expanded=True,
-                  state="complete")
+    status.update(label=f"Fuzzy search is **complete**!", expanded=True, state="complete")
 
     return csvlines
 
@@ -511,7 +501,6 @@ def get_tree( ):
                 st.success(txt)
                 state('logger').success(txt)
 
-
     return
 
 
@@ -525,7 +514,6 @@ def get_worksheet_column_selection( ):
         # Read 'sheets.json' file
         with open('sheets.json', 'r') as j:
             sheets = json.load(j)
-
 
         selected_google_sheet = st.selectbox('Choose a Google Sheet to work with', sheets.keys( ), index=None, key='google_sheet_selectbox')
         st.session_state.google_sheet_selection = selected_google_sheet
@@ -560,28 +548,6 @@ def get_worksheet_column_selection( ):
 
                 # Now fetch a list of columns from the selected sheet
                 column_list = worksheet.row_values(1)
-
-                # # If `check_worksheet_column_headings` is set... check that each value from `column_list` is in our approved set of headings.  ONLY works for Alma migration at this point!
-                # errors = 0
-                # if state('check_worksheet_column_headings'):
-                #     if 'Alma-D' not in state('google_sheet_selection'):
-                #         msg = f"Checking worksheet column headings ONLY works for 'Migration-to-Alma-D' at this point!"
-                #         errors = 1
-                #         st.error(msg)
-                    
-                #     else:
-                #         for h in column_list:
-                #             if h not in correct_Alma_CSV_headings:
-                #                 errors += 1
-                #                 msg = f"Whoa! Worksheet column heading `{h}` is NOT in our approved list of headings!"
-                #                 logger.critical(msg)
-                #                 st.error(msg)
-                #                 msg = f"You should stop this app and fix your worksheet NOW!"
-                #                 st.error(msg)
-
-                #     if errors == 0:
-                #         msg = f"The worksheet column headings showed NO ERRORS.  You are good to go!"
-                #         st.success(msg)
 
                 # Make your column selection
                 selected_column = st.selectbox('Choose the column containing your filenames', column_list, index=None, key='column_selector')
@@ -755,34 +721,37 @@ def post_processing(csv_results):
     # If we have an open dataframe, write it back into the Google sheet
     if isinstance(st.session_state.df, pd.DataFrame):
 
-        # If the "Dump dataframe before save" is set, print the dataframe
-        if st.session_state.dump_dataframe:
+        # If the "Save dataframe..." checkbox is NOT set, print the dataframe
+        if not st.session_state.save_dataframe:
+            st.write(f"Smart move! Dumping the modified dataframe now.")
+            st.write(f"Please review it and if all is well consider checking the 'Save dataframe...' checkbox and running this process again to commit the changes.")
             st.dataframe(st.session_state.df)
+        else:
 
-        try:
+            try:
 
-            worksheet = open_google_worksheet(
-                state('google_sheet_url'), state('google_worksheet_selection'))
-            if worksheet:
-                set_with_dataframe(worksheet, st.session_state.df, 1, 1)
-                txt = f"Updated file URLs have been saved to the selected Google worksheet."
-                st.success(txt)
-                state('logger').success(txt)
+                worksheet = open_google_worksheet(
+                    state('google_sheet_url'), state('google_worksheet_selection'))
+                if worksheet:
+                    set_with_dataframe(worksheet, st.session_state.df, 1, 1)
+                    txt = f"Updated file URLs have been saved to the selected Google worksheet."
+                    st.success(txt)
+                    state('logger').success(txt)
 
-            else:
-                txt = f"Google worksheet at {state('google_sheet_url')} and {state('google_worksheet_selection')} could not be re-opened."
+                else:
+                    txt = f"Google worksheet at {state('google_sheet_url')} and {state('google_worksheet_selection')} could not be re-opened."
+                    st.error(txt)
+                    state('logger').error(txt)
+
+            except Exception as ex:
+                txt = f"Google worksheet at {state('google_sheet_url')} and {state('google_worksheet_selection')} was NOT updated."
                 st.error(txt)
                 state('logger').error(txt)
 
-        except Exception as ex:
-            txt = f"Google worksheet at {state('google_sheet_url')} and {state('google_worksheet_selection')} was NOT updated."
-            st.error(txt)
-            state('logger').error(txt)
-
-            st.write(f"Dumping the updated worksheet DataFrame...")
-            st.dataframe(st.session_state.df)
-            state('logger').critical(ex)
-            st.exception(ex)
+                st.write(f"Dumping the updated worksheet DataFrame...")
+                st.dataframe(st.session_state.df)
+                state('logger').critical(ex)
+                st.exception(ex)
 
     else:
         txt = f"Google worksheet at {state('google_sheet_url')} and {state('google_worksheet_selection')} was NOT updated"
@@ -841,12 +810,8 @@ def file_handler(index, blob_service_client, target, score, match, local_storage
         if transcript:
             st.session_state.df.at[row, 'display_template'] = 'transcript'
 
-        # Temporary... print the dataframe
-        # if isinstance(st.session_state['df'], pd.DataFrame):
-        #     st.dataframe(st.session_state['df'])
-
     # Thumbnail creation
-    if url and state('generate_thumb') and not state('copy_to_objs'):
+    if url and state('generate_thumb'):
         result = create_derivative('thumbnail', index, url, local_storage_path, blob_service_client)
 
     # "Small" creation
@@ -855,40 +820,6 @@ def file_handler(index, blob_service_client, target, score, match, local_storage
 
     return True
 
-
-# # create_clientThumb(local_storage_path)
-# # ------------------------------------------------------------
-# def create_clientThumb(local_storage_path):
-
-#     dirname, basename = os.path.split(local_storage_path)
-#     root, ext = os.path.splitext(basename)
-
-#     # Create clientThumb thumbnails for Alma
-#     derivative_path = f"/Volumes/exports/OBJs/{root}X.jpg"
-#     dest = f"/Volumes/exports/OBJs/{root}{ext}.clientThumb"
-
-#     options = { 'trim': False,
-#                 'height': 400,
-#                 'width': 400,
-#                 'quality': 85,
-#                 'type': 'thumbnail'
-#               }
-
-#     # If original is an image...
-#     if ext.lower( ) in ['.tiff', '.tif', '.jpg', '.jpeg', '.png']:
-#         generate_thumbnail(local_storage_path, derivative_path, options)
-#         os.rename(derivative_path, dest)
-
-#     # If original is a PDF...
-#     elif ext.lower( ) == '.pdf':
-#         cmd = 'magick ' + local_storage_path + '[0] ' + derivative_path
-#         call(cmd, shell=True)
-#         os.rename(derivative_path, dest)
-
-#     else:
-#         txt = f"Sorry, we can't create a thumbnail for '{local_storage_path}'"
-#         st.warning(txt)
-#         state('logger').warning(txt)
 
 # create_derivative(derivative_type, index, url, local_storage_path, blob_service_client)
 # ------------------------------------------------------------
@@ -899,30 +830,11 @@ def create_derivative(derivative_type, index, url, local_storage_path, blob_serv
     dirname, basename = os.path.split(local_storage_path)
     root, ext = os.path.splitext(basename)
 
-    # # Create clientThumb thumbnails for Alma
-    # if state('processing_mode') == 'Migration to Alma':
-    #     derivative_path = f"/Volumes/exports/OBJs"
-
-    #     # If original is an image...
-    #     if ext.lower( ) in ['.tiff', '.tif', '.jpg', '.jpeg', '.png']:
-    #         generate_thumbnail(local_storage_path, derivative_path, options)
-
-    #     # If original is a PDF...
-    #     elif ext.lower( ) == '.pdf':
-    #         cmd = 'magick ' + local_storage_path + '[0] ' + derivative_path
-    #         call(cmd, shell=True)
-
-    #     else:
-    #         txt = f"Sorry, we can't create a thumbnail for '{local_storage_path}'"
-    #         st.warning(txt)
-    #         state('logger').warning(txt)
-
     # If creating derivative(s) for CollectionBuilder...
     if state('processing_mode') == 'CollectionBuilder':
         
         if derivative_type == 'thumbnail':
             col = 'image_thumb'
-            # col = 'WORKSPACE3'
             options = {
                 'trim': False,
                 'height': 400,
@@ -941,7 +853,6 @@ def create_derivative(derivative_type, index, url, local_storage_path, blob_serv
                 return False
 
             col = 'image_small'
-            # col = 'WORKSPACE2'
             options = {
                 'trim': False,
                 'height': 800,
@@ -961,11 +872,12 @@ def create_derivative(derivative_type, index, url, local_storage_path, blob_serv
 
         # If original is an image...
         if ext.lower( ) in ['.tiff', '.tif', '.jpg', '.jpeg', '.png']:
-            generate_thumbnail(local_storage_path, derivative_path, options)
+            generate_thumbnail(st, local_storage_path, derivative_path, options)
 
         # If original is a PDF...
         elif ext.lower( ) == '.pdf':
             cmd = 'magick ' + local_storage_path + '[0] ' + derivative_path
+            st.info(f"Derivative command: {cmd}")
             call(cmd, shell=True)
 
         else:
@@ -1027,61 +939,15 @@ if __name__ == '__main__':
         st.session_state.azure_blob_storage = False
     if not state('transfer_transcripts'):
         st.session_state.transfer_transcripts = False
-    if not state('copy_to_objs'):
-        st.session_state.copy_to_objs = False
-    if not state('dump_dataframe'):
-        st.session_state.dump_dataframe = False
+    if not state('save_dataframe'):
+        st.session_state.save_dataframe = False
     if not state('df'):
         st.session_state.df = pd.DataFrame( )  # Empty Pandas dataframe for our Google Sheet
 
     # Display and fetch options from the sidebar
     with st.sidebar:
 
-        # # Processing mode
-        # processing_mode = st.radio(
-        #     "Select desired processing mode",
-        #     ["None", "Migration to Alma", "CollectionBuilder"],
-        #     key="processing_mode_radio",
-        #     disabled=False)
-        # st.session_state.processing_mode = processing_mode
-        # if state('processing_mode') == "None":
-        #     st.session_state.processing_mode = False
-
         st.session_state.processing_mode = "CollectionBuilder"     # Always the case in this app!
-
-        # Use previous file list?
-        use_previous_file_list = st.checkbox(
-            label=
-            "Check here to use the previous list of filenames stored in 'file-list.tmp'",
-            value=False,
-            key='use_previous_file_list_checkbox')
-        st.session_state.use_previous_file_list = use_previous_file_list
-
-        # # Check worksheet column headings
-        # if state('use_previous_file_list'):
-        #     st.session_state.check_worksheet_column_headings = False
-        #     check_worksheet_column_headings = st.checkbox(
-        #         label="Check worksheet for proper column headings",
-        #         value=False,
-        #         disabled=True,   
-        #         key='check_worksheet_column_headings_checkbox')
-        # else:
-        # st.session_state.check_worksheet_column_headings = st.checkbox(
-        #     label="Check worksheet for proper column headings",
-        #     value=state('check_worksheet_column_headings'),
-        #     disabled=False,
-        #     key='check_worksheet_column_headings_checkbox')
-
-        # Output to CSV?
-        output_to_csv = st.checkbox(
-            label="Check here to output results to a CSV file",
-            value=False,
-            key='output_to_csv_checkbox')
-        st.session_state.output_to_csv = output_to_csv
-
-        # Limit search with regex?
-        regex_text = st.text_input(label= "Specify a 'regex' pattern here to limit the scope of your search", value=None,key='regex_text_input')
-        st.session_state.regex_text = regex_text
 
         # Copy files to Azure blob storage?
         azure_blob_storage = st.checkbox(
@@ -1090,22 +956,12 @@ if __name__ == '__main__':
             key='azure_blob_storage_checkbox')
         st.session_state.azure_blob_storage = azure_blob_storage
 
-        # Search for Transcript files
-        if state('azure_blob_storage'):
-            transfer_transcripts = st.checkbox(
-                "Check here to search for and transfer CSV, VTT, PDF, or XML transcript files",
-                value=False,
-                key='transfer_transcripts_checkbox',
-                disabled=False)
-            st.session_state.transfer_transcripts = transfer_transcripts
-
-        else:
-            transfer_transcripts = st.checkbox(
-                "Check here to search for and transfer CSV, VTT, PDF, or XML transcript files",
-                value=False,
-                key='transfer_transcripts_checkbox',
-                disabled=False)
-            st.session_state.transfer_transcripts = False
+        # Save dataframe or dump dataframe before save?
+        save_dataframe = st.checkbox(
+            "Save dataframe changes to the Google Sheet?  If not checked the dataframe will be dumped for review.",
+            value=False,
+            key='save_dataframe_checkbox')
+        st.session_state.save_dataframe = save_dataframe
 
         # Generate thumbnail and/or small image derivatives?
         if state('azure_blob_storage'):
@@ -1140,29 +996,43 @@ if __name__ == '__main__':
                 disabled=True)
             st.session_state.generate_small = False
 
-        # # Copy OBJ files (and clientThumbs) to //Volumes/exports/OBJs for Alma?
-        # if state('azure_blob_storage'):
-        #     copy_to_objs = st.checkbox(
-        #         "Check here to copy found OBJ (and clientThumb) files to //Volumes/exports/OBJs for Alma",
-        #         value=False,
-        #         key='copy_to_objs_checkbox',
-        #         disabled=True)
-        #     st.session_state.copy_to_objs = copy_to_objs
+        st.divider( )
 
-        # else:
-        #     copy_to_objs = st.checkbox(
-        #         "Check here to copy found OBJ (and clientThumb) files to //Volumes/exports/OBJs for Alma",
-        #         value=False,
-        #         key='copy_to_objs_checkbox',
-        #         disabled=False)
-        #     st.session_state.copy_to_objs = copy_to_objs
+        # Search for Transcript files
+        if state('azure_blob_storage'):
+            transfer_transcripts = st.checkbox(
+                "Check here to search for and transfer CSV, VTT, PDF, or XML transcript files",
+                value=False,
+                key='transfer_transcripts_checkbox',
+                disabled=False)
+            st.session_state.transfer_transcripts = transfer_transcripts
 
-        # Dump dataframe before save?
-        dump_dataframe = st.checkbox(
-            "Dump the Google Sheet dataframe before it is saved?",
+        else:
+            transfer_transcripts = st.checkbox(
+                "Check here to search for and transfer CSV, VTT, PDF, or XML transcript files",
+                value=False,
+                key='transfer_transcripts_checkbox',
+                disabled=False)
+            st.session_state.transfer_transcripts = False
+
+        # Use previous file list?
+        use_previous_file_list = st.checkbox(
+            label=
+            "Check here to use the previous list of filenames stored in 'file-list.tmp'",
             value=False,
-            key='dump_dataframe_checkbox')
-        st.session_state.dump_dataframe = dump_dataframe
+            key='use_previous_file_list_checkbox')
+        st.session_state.use_previous_file_list = use_previous_file_list
+
+        # Output to CSV?
+        output_to_csv = st.checkbox(
+            label="Check here to output results to a CSV file",
+            value=False,
+            key='output_to_csv_checkbox')
+        st.session_state.output_to_csv = output_to_csv
+
+        # Limit search with regex?
+        regex_text = st.text_input(label= "Specify a 'regex' pattern here to limit the scope of your search", value=None,key='regex_text_input')
+        st.session_state.regex_text = regex_text
 
     # Fetch the --worksheet argument
     if not state('use_previous_file_list'):
